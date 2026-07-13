@@ -115,4 +115,4 @@ Provided as-is, MIT-licensed, **not audited**. You install it on your own accoun
 at your own risk. Verify the source and the on-chain result yourself. This is not
 financial advice.
 
-— [Cbot Labs](../README.md)
+— [Cbot Labs](../../README.md)
