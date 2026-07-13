@@ -1,0 +1,22 @@
+{
+  "name": "cbot-labs-ba-cron",
+  "version": "1.0.0",
+  "description": "Autonomous Xahau Balance-Reward (~4% APY) auto-claim cron — install on your own account, hands-off.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "install-ba-cron": "install-ba-cron.js"
+  },
+  "scripts": {
+    "dry-run": "node install-ba-cron.js",
+    "install-cron": "node install-ba-cron.js --apply"
+  },
+  "dependencies": {
+    "@transia/xrpl": "2.7.3-alpha.28",
+    "@transia/ripple-binary-codec": "1.4.6-alpha.10",
+    "@transia/ripple-keypairs": "1.1.8-alpha.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
