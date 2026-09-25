@@ -64,7 +64,7 @@ const NETID = TESTNET ? 21338 : 21337;
 const POKE_HOOK_ON = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF7EFFFFFFFFFFFFFFFFFBFFFFF'; // fires on Cron(92)+SetHook(22)+Invoke(99) only
 const NS = crypto.createHash('sha256').update('cron-claim-reward-poke').digest('hex').toUpperCase();
 const WASM_PATH = path.join(__dirname, 'hook', 'cron-claim-reward-poke.wasm');
-const EXPECT_HASH = '9F2B2E342FF4C65343980B7A9F78200B283D84732C1E80376A80A0E11628F7C6';
+const EXPECT_HASH = '1C199BB015C5A6A7F6E477F1D4CE10731179F660F67C277BDE6A0A1CD89D66ED';   /* v2 (2026-09): SetHook-reinstall no longer stages a claim; was 9F2B2E34 */
 const CRON_DELAY = 2603580;  // ~30.13 days (>= the 30-day BA cooldown)
 const CRON_REPEAT = 256;     // self-re-arms each tick; ~21 years of monthly claims
 const MAX_FEE_DROPS = 50_000_000; // 50 XAH cap — a 1.3 KB SetHook is far cheaper; a spike means retry later

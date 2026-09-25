@@ -50,6 +50,11 @@
 #define sfRewardTime ((2U << 16U) + 98U)
 #endif
 
+/* ttHOOK_SET (SetHook = 22) — define defensively if the header set doesn't. */
+#ifndef ttHOOK_SET
+#define ttHOOK_SET 22
+#endif
+
 /* 30-day BA claim cooldown, in seconds (matches server/lib/ba-status.js). */
 #define BA_COOLDOWN_SECONDS 2592000ULL
 
@@ -106,6 +111,15 @@ int64_t hook(uint32_t reserved)
     /* `txn` is the file-scope ClaimReward template (see note above) — fresh per
        invocation because the hook wasm is re-instantiated each call. We fill
        Account / FLS / LLS / Fee / EmitDetails below. */
+
+    /* ---- trigger gate (frz-authz / otxn_type finding) ------------------
+       Auto-claim only on the INTENDED triggers — the Cron tick and an external
+       Invoke poke. HookOn also admits SetHook (tt22) so a reinstall re-arms the
+       cron, but a reinstall must NOT itself stage a ClaimReward: a maintenance
+       SetHook shouldn't carry a claim side-effect. Accept early (no emit) on
+       SetHook; Cron/Invoke fall through to the eligibility gate + emit. */
+    if (otxn_type() == ttHOOK_SET)
+        accept(SBUF("AutoReward: no claim on SetHook reinstall."), 0);
 
     /* Who are we (and the claimer Account on the emitted ClaimReward). */
     uint8_t hook_acc[20];

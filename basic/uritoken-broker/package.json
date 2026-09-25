@@ -1,0 +1,17 @@
+{
+  "name": "xahau-uritoken-broker",
+  "version": "3.0.0",
+  "description": "Ephemeral broker hook for URIToken (NFT) marketplace sales on Xahau. A buyer sends XAH to the broker account with the token id + max ask; the hook buys the listed URIToken, remits it to the buyer, routes a broker fee (net of all chain costs incl. the remit reserve), and auto-refunds a failed buy.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "install-hook": "node scripts/install.js",
+    "fund": "node scripts/fund.js"
+  },
+  "dependencies": {
+    "@transia/xrpl": "2.7.3-alpha.28"
+  },
+  "devDependencies": {
+    "@transia/hooks-toolkit-cli": "1.0.5"
+  }
+}

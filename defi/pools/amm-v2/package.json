@@ -1,0 +1,20 @@
+{
+  "name": "cbot-labs-amm-v2",
+  "version": "1.0.0",
+  "description": "Constant-product AMM hook for Xahau (XAH <-> one IOU): LP shares as an IOU, swap fee in bps, optional DAO fee escrow. The exact build running the onexah.io pools on mainnet.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "install-amm": "install-amm.js"
+  },
+  "scripts": {
+    "dry-run": "node install-amm.js",
+    "install-pool": "node install-amm.js --apply"
+  },
+  "dependencies": {
+    "@transia/xrpl": "2.7.3-alpha.28"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

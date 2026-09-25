@@ -76,7 +76,7 @@ Cron schedule : ✓ scheduled
 ```
 
 You can also check on any explorer: your account should show a `Cron` object and
-a hook whose hash is `9F2B2E34…`. About every 30 days you'll see a `Cron`
+a hook whose hash is `1C199BB0…`. About every 30 days you'll see a `Cron`
 pseudo-transaction, a `ClaimReward`, then a `GenesisMint` crediting your reward.
 
 ## Uninstall / pause
@@ -89,11 +89,11 @@ pseudo-transaction, a `ClaimReward`, then a `GenesisMint` crediting your reward.
 
 | | |
 |---|---|
-| Hook hash | `9F2B2E342FF4C65343980B7A9F78200B283D84732C1E80376A80A0E11628F7C6` |
+| Hook hash | `1C199BB015C5A6A7F6E477F1D4CE10731179F660F67C277BDE6A0A1CD89D66ED` (v2) |
 | Namespace | `sha256("cron-claim-reward-poke")` |
 | `HookOn` | `FFFF…F7EFFFF…BFFFFF` → fires on Cron(92), SetHook(22), Invoke(99) only |
 | Flags | `hsfCOLLECT` (4) — required for a Cron tick to run it |
-| Size | 1,345 bytes |
+| Size | 1,422 bytes |
 | Source | [`hook/cron-claim-reward-poke.c`](hook/cron-claim-reward-poke.c) |
 | Binary | [`hook/cron-claim-reward-poke.wasm`](hook/cron-claim-reward-poke.wasm) |
 
@@ -108,6 +108,31 @@ Cron stalls. It's spam-proof: an Invoke inside the 30-day cooldown is a no-op, a
 it can still only claim to your own balance.
 
 ---
+### v2 (2026-09) — what changed and what we learned running it
+
+`9F2B2E34` (v1) → `1C199BB0` (v2). One behavioural change: **a `SetHook` re-install no
+longer stages a claim.** v1 treated its own install transaction as a poke, so every
+re-install inside the 30-day cooldown burned a no-op `ClaimReward`. v2 just accepts the
+`SetHook` and waits for the Cron tick.
+
+Operating lessons from running this on a fleet of accounts for several months:
+
+- **The `hsfCOLLECT` flag is the whole thing.** A Cron pseudo-transaction executes your
+  hook only in the *collect* pass, which needs BOTH `lsfTshCollect` on the account AND
+  `hsfCOLLECT` (4) on the hook slot. Any later `SetHook` that touches the slot with
+  `Flags: 1` (plain `hsfOVERRIDE`) silently strips `hsfCOLLECT`; the schedule keeps
+  firing but the hook never runs. The tell: a `Cron` transaction whose metadata shows
+  **zero `HookExecutions`**. Rule: every re-install passes `Flags: 5`, and you read the
+  slot back and assert `Flags & 4` afterwards (the installer's ✓ line does this).
+- **A manual poke restarts the cooldown, not the schedule.** If you nudge a claim with
+  an `Invoke`, the account's 30-day reward window now starts from the poke, but the
+  Cron still fires on its old date — inside the cooldown, so that tick does nothing.
+  After a poke, re-send `CronSet` with `StartTime` = the new `RewardTime` + delay
+  (plus a couple of hours' margin) so the next tick lands in the claimable window.
+- **Cheap health check without an explorer:** `account_info` → `RewardTime` should
+  advance by ~30 days on each tick, and the account's tx history shows `Cron` →
+  `ClaimReward` → `GenesisMint` triplets.
+
 
 ## Disclaimer
 
