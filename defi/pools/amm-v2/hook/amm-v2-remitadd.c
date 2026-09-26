@@ -1440,18 +1440,20 @@ int64_t hook(uint32_t reserved)
         uint64_t tracked_iou = reserveIou;
         if (cumDaoIou > (~(uint64_t)0) - tracked_iou) tracked_iou = ~(uint64_t)0;
         else tracked_iou += cumDaoIou;
-        /* Mirror the XAH-YIELD exclusions: subtract this txn's own
-           inbound trade-IOU before computing delta, and subtract any
-           prior-txn IOU-side pending-ADD stash. LP-IOU inbound (REM)
-           lands on a different trustline and never contributes to the
-           trade-IOU ledger reading, so skip it. */
-        /* v7-exp: amount-keyed (was `!is_xah_in && !is_lp_iou_in`) — same
-           result for all Payment shapes, plus excludes the IOU leg of a
-           dual-currency Remit ADD. */
-        if (in_iou_micro > 0 && !is_lp_iou_in) {
-            if (tracked_iou > (~(uint64_t)0) - in_iou_micro) tracked_iou = ~(uint64_t)0;
-            else tracked_iou += in_iou_micro;
-        }
+        /* AUDIT 2026-09-26 (sublimator): DO NOT exclude this txn's inbound trade-IOU
+           here. Unlike the XAH AccountRoot balance (which DOES already include this
+           txn's inbound XAH when the hook runs — see XAH-YIELD), the trade-IOU
+           trustline read above does NOT yet include this txn's inbound IOU, for both
+           a Payment and the IOU leg of a Remit ADD (measured on mainnet: the stored
+           reserveIou lagged reality by exactly one inbound, and the emitted XAH of
+           every IOU-in SWAP matched a constant-product priced on `actual - in`).
+           The former `tracked_iou += in_iou_micro` therefore drove the decrement
+           branch to settle reserveIou = actual - in; the SWAP then priced on that
+           understated reserve and over-paid XAH by ~in/reserve (EVR pool: 1.3% of
+           the XAH paid over 600 txs), and an ADD minted shares against the same
+           understated reserve. Only the prior-txn pending-ADD stash (already on the
+           line) and the DAO escrow are excluded. LP-IOU inbound (REM) lands on a
+           different trustline and never touches this reading. */
         /* Cross-user pending-stash credit. See XAH-YIELD block for rationale. */
         uint64_t pend_y_track = cumPendIou;
         if (((uint32_t)(pre_pend_side == AMM_PEND_SIDE_IOU) & (uint32_t)(pend_y_track < pre_pend_amt)) != 0)
@@ -1492,11 +1494,10 @@ int64_t hook(uint32_t reserved)
                belong to the SWAP/ADD path. #8 only stopped an outright RAISE via the
                clamp; #155 stops the too-high settle WITHIN the decrement. The plain
                reconcile (no inbound, no pending) is unchanged (excl == cumDaoIou). */
+            /* AUDIT 2026-09-26: the inbound trade-IOU is NOT on the line yet (see the
+               tracked_iou note above), so it must not be excluded from the target
+               either — excluding it is exactly what settled reserveIou = actual - in. */
             uint64_t excl_iou = cumDaoIou;
-            if (in_iou_micro > 0 && !is_lp_iou_in) {
-                if (excl_iou > (~(uint64_t)0) - in_iou_micro) excl_iou = ~(uint64_t)0;
-                else excl_iou += in_iou_micro;
-            }
             if (excl_iou > (~(uint64_t)0) - pend_y_track) excl_iou = ~(uint64_t)0;
             else excl_iou += pend_y_track;
             uint64_t target_iou = (ledger_iou > excl_iou) ? (ledger_iou - excl_iou) : 0;

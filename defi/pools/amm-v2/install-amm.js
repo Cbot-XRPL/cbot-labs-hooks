@@ -50,7 +50,7 @@ const NETID = NETWORK === 'mainnet' ? 21337 : 21338;
 const MAX_FEE_XAH = Number(opt('--maxfee', 80));
 
 // AMM v2 hook constants (do not change).
-const EXPECT_HASH = 'E000F5F04A0A1CABCAF6ECDA617E8E743BAF1C9F57EE0A7B8FF066CF95DED5C7';
+const EXPECT_HASH = 'B549537D6B7F38F94418C510C625315232DE5F527D8B2585BAED423243CF49A2';   /* 2026-09-26: IOU-in reserve fix; was E000F5F0 */
 const HOOK_ON = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF77FFFFFFFFFFFFFFFFFBFFFFE'; // fires on Payment(0) + Invoke(99)
 const NS = crypto.createHash('sha256').update('amm-v2-hook').digest('hex').toUpperCase();
 const WASM_PATH = path.join(__dirname, 'hook', 'amm-v2-remitadd.wasm');
