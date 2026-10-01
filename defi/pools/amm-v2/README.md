@@ -11,8 +11,8 @@ verifiable against those live accounts.
 
 | | |
 |---|---|
-| Hook hash | `B549537D6B7F38F94418C510C625315232DE5F527D8B2585BAED423243CF49A2` |
-| Binary | [`hook/amm-v2-remitadd.wasm`](hook/amm-v2-remitadd.wasm) — 56,579 bytes |
+| Hook hash | `834741D6864C005D03AA82CCA6ECABA133B9016688E71A02E4A443707367A0E3` |
+| Binary | [`hook/amm-v2-remitadd.wasm`](hook/amm-v2-remitadd.wasm) — 57,623 bytes |
 | Source | [`hook/amm-v2-remitadd.c`](hook/amm-v2-remitadd.c) |
 | Namespace | `sha256("amm-v2-hook")` = `6691371A…` |
 | `HookOn` | `…F77F…BFFFFE` → fires on `Payment` (0) and `Invoke` (99) |
@@ -118,7 +118,7 @@ few XAH). Then:
 
 ```bash
 node -e "const c=require('crypto'),fs=require('fs');console.log(c.createHash('sha512').update(fs.readFileSync('hook/amm-v2-remitadd.wasm')).digest('hex').slice(0,64).toUpperCase())"
-# → B549537D6B7F38F94418C510C625315232DE5F527D8B2585BAED423243CF49A2
+# → 834741D6864C005D03AA82CCA6ECABA133B9016688E71A02E4A443707367A0E3
 # then compare with slot 0 of any of the three live pools (ledger_entry hook / account_objects type=hook)
 ```
 
@@ -130,14 +130,24 @@ The `.c` reproduces this hash byte-for-byte on the public Xahau buildbox
 `07E5CA83` → `858715147E` → `6CF9DFE8` (partial-payment guard) → `F8B02C71` (1-sign dual-Remit ADD)
 → `414ECD6B` / `DF31BED9` (external-audit fixes, callback delivery truth, receivability pre-check)
 → `E8400EF2` → `C71EBD01` (`FEECCY`) → `E000F5F0` (u64-overflow guard on the FEECCY conversion)
-→ **`B549537D`** (2026-09-26, live on all three pools). The last step fixes a pricing bug found in
-external review: on Xahau the hook sees the pool's XAH balance *including* the transaction's
-inbound XAH, but the IOU trust line *not yet* including the inbound IOU. The reconcile prelude
-assumed both were included, so it settled the IOU reserve to `actual − in` before pricing and every
-IOU→XAH swap paid out about `in / reserve` too much XAH (and ADDs minted against the same
-understated reserve). The reconcile no longer treats the inbound IOU as already on the line.
-If you fork this: never assume the hook's ledger view includes the current transaction's IOU
-delivery; measure it per transaction type on testnet.
+→ `B549537D` (2026-09-26: IOU-in reserve pricing fix) → **`834741D6`** (2026-10-01, live on all
+three pools).
+
+`B549537D` fixed a pricing bug found in external review: the reconcile prelude assumed the inbound
+IOU was already on the trust line when the hook ran and settled the IOU reserve to `actual − in`
+before pricing, so every IOU→XAH swap paid out about `in / reserve` too much XAH (and ADDs minted
+against the same understated reserve). A hook runs *before* its transaction applies, so neither the
+XAH balance nor the IOU line includes the inbound amount; the reconcile no longer subtracts it.
+
+`834741D6` closes four more external-review findings of one class — "do not take the deposit if the
+payout cannot apply": the tokenized-ADD pre-check now also refuses `lsfRequireDestTag` (the LP-token
+mint Remit is untagged), MIGRATE runs the same fail-closed pre-check *before* deleting the legacy
+claim, SWAP refuses up front for DepositAuth / RequireDestTag swappers and frozen trade-IOU lines
+(a failed swap payout is not stashed, it would have become LP yield), and the XAH write-down
+branch of the reconcile now excludes the parked first-leg ADD stash so parked legs are never
+booked as pool reserve.
+If you fork this: never assume the hook's ledger view includes the current transaction's delivery
+(XAH or IOU); measure it per transaction type on testnet.
 The hook has been through an external code audit; the audit tracker is private, the resulting
 fixes are all in this source.
 

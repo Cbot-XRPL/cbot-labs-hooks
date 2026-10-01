@@ -1350,8 +1350,18 @@ int64_t hook(uint32_t reserved)
                reserveXah portion absorbs the decrement; cumDaoXah is
                untouched (DAO escrow is virtual, just decrement reserveXah
                down to where ledger_balance - cumDaoXah lands). */
-            uint64_t target_reserve = (ledger_balance_drops > cumDaoXah)
-                                      ? (ledger_balance_drops - cumDaoXah) : 0;
+            /* AUDIT 2026-09-29 (amm-12): the decrement target must exclude the parked ADD-leg
+               stashes (cumPendXah / this sender's stash) exactly as `tracked` does, or a routine
+               post-emit-fee decrement settles reserveXah to ledger − dao and books the parked
+               legs as LP reserve (rx over-stated → XAH-in swaps under-pay, REMs over-pay).
+               NOTE: this txn's inbound XAH is NOT excluded — the hook runs before the Payment /
+               Remit applies, so the AccountRoot read above does not contain it yet (the same
+               pre-apply fact the 2026-09-26 IOU fix rests on); the ADD/SWAP body books it once.
+               Belt-and-suspenders: the decrement branch never RAISES reserveXah. */
+            uint64_t excl_x = cumDaoXah;
+            if (excl_x > (~(uint64_t)0) - pend_x_track) excl_x = ~(uint64_t)0; else excl_x += pend_x_track;
+            uint64_t target_reserve = (ledger_balance_drops > excl_x) ? (ledger_balance_drops - excl_x) : 0;
+            if (target_reserve > reserveXah) target_reserve = reserveXah;
             uint64_t delta_dn = reserveXah - target_reserve;
             TRACEVAR(delta_dn);
             TRACESTR("AMM: xah-yield decrement absorbed");
@@ -1928,6 +1938,11 @@ int64_t hook(uint32_t reserved)
             }
             if (_padf & 0x01000000U)   /* lsfDepositAuth */
                 AMM_ROLLBACK("amm: recipient has DepositAuth — remove it to add liquidity.");
+            /* AUDIT 2026-09-29 (amm-16): the ALP mint is a Remit with NO DestinationTag, so an
+               account with lsfRequireDestTag refuses it (tecDST_TAG_NEEDED) → the deposit was
+               kept while cbak reverted the mint. Block it up front like DepositAuth. */
+            if (_padf & 0x00020000U)   /* lsfRequireDestTag */
+                AMM_ROLLBACK("amm: recipient requires a destination tag — clear it to add liquidity.");
             uint8_t _plk[34];
             if (util_keylet(SBUF(_plk), KEYLET_LINE, sender, 20, hook_acc, 20, amm_lp_cur, 20) == 34
                 && slot_set(SBUF(_plk), 22) == 22
@@ -2220,6 +2235,27 @@ int64_t hook(uint32_t reserved)
         uint8_t macct[20];
         if (otxn_param(SBUF(macct), SBUF_STR("ACCT")) != 20)
             AMM_ROLLBACK("amm: MIGRATE missing ACCT.");
+        /* AUDIT 2026-09-29 (amm-15): MIGRATE deletes the account's legacy share entry after
+           emitting an ALP Remit with no DestinationTag; if that Remit can't apply (DepositAuth,
+           RequireDestTag, frozen ALP line) the claim was gone with nothing delivered. Same
+           fail-closed receivability pre-check as the tokenized ADD (#12), BEFORE any state
+           change. Slots 20/22 are free here. */
+        {
+            uint32_t _mdf = 0; uint8_t _mkl[34];
+            if (util_keylet(SBUF(_mkl), KEYLET_ACCOUNT, macct, 20, 0, 0, 0, 0) == 34
+                && slot_set(SBUF(_mkl), 20) == 20 && slot_subfield(20, sfFlags, 20) == 20) {
+                uint8_t _mfb[4]; if (slot(SBUF(_mfb), 20) == 4) _mdf = UINT32_FROM_BUF(_mfb);
+            }
+            if (_mdf & 0x01000000U) AMM_ROLLBACK("amm: MIGRATE target has DepositAuth.");
+            if (_mdf & 0x00020000U) AMM_ROLLBACK("amm: MIGRATE target requires a destination tag.");
+            uint8_t _mlk[34];
+            if (util_keylet(SBUF(_mlk), KEYLET_LINE, macct, 20, hook_acc, 20, amm_lp_cur, 20) == 34
+                && slot_set(SBUF(_mlk), 22) == 22 && slot_subfield(22, sfFlags, 22) == 22) {
+                uint8_t _mlf[4];
+                if (slot(SBUF(_mlf), 22) == 4 && (UINT32_FROM_BUF(_mlf) & 0x00C00000U))
+                    AMM_ROLLBACK("amm: MIGRATE target ALP trustline is frozen.");
+            }
+        }
         uint8_t mlp_key[32]; AMM_ZERO(mlp_key, 32); mlp_key[0] = 0x02U;
         AMM_COPY_20(mlp_key + 1, macct);
         uint8_t mlp_val[8]; AMM_ZERO(mlp_val, 8);
@@ -2268,6 +2304,29 @@ int64_t hook(uint32_t reserved)
         if (reserveXah == 0 || reserveIou == 0 || totalShares == 0)
             AMM_ROLLBACK("amm: pool not initialized.");
 
+        /* AUDIT 2026-09-29 (amm-15/16 class): the SWAP payout is an untagged Payment/Remit
+           to `sender`; DepositAuth or RequireDestTag on the swapper makes it fail at apply
+           time, and a failed SWAP payout is NOT stashed — it became LP yield. Fail closed
+           BEFORE booking anything. (XAH-in swaps pay an IOU Remit: also refuse a FROZEN
+           trade-IOU line on the swapper.) Slots 20/22 are free in SWAP. */
+        {
+            uint32_t _sdf = 0; uint8_t _skl[34];
+            if (util_keylet(SBUF(_skl), KEYLET_ACCOUNT, sender, 20, 0, 0, 0, 0) == 34
+                && slot_set(SBUF(_skl), 20) == 20 && slot_subfield(20, sfFlags, 20) == 20) {
+                uint8_t _sfb[4]; if (slot(SBUF(_sfb), 20) == 4) _sdf = UINT32_FROM_BUF(_sfb);
+            }
+            if (_sdf & 0x01000000U) AMM_ROLLBACK("amm: SWAP recipient has DepositAuth — remove it to swap.");
+            if (_sdf & 0x00020000U) AMM_ROLLBACK("amm: SWAP recipient requires a destination tag — clear it to swap.");
+            if (is_xah_in) {
+                uint8_t _slk[34];
+                if (util_keylet(SBUF(_slk), KEYLET_LINE, sender, 20, cfg_issuer, 20, cfg_cur, 20) == 34
+                    && slot_set(SBUF(_slk), 22) == 22 && slot_subfield(22, sfFlags, 22) == 22) {
+                    uint8_t _slf[4];
+                    if (slot(SBUF(_slf), 22) == 4 && (UINT32_FROM_BUF(_slf) & 0x00C00000U))
+                        AMM_ROLLBACK("amm: SWAP recipient's IOU trustline is frozen.");
+                }
+            }
+        }
         if (is_xah_in && in_xah_drops < min_xah)
             AMM_ROLLBACK("amm: SWAP XAH below MINXAH.");
         if (!is_xah_in && in_iou_micro < min_iou)
